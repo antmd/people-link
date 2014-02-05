@@ -17,11 +17,16 @@ def make_utf8_str(s):
       res += data
   return res
 
+def guess_from_mail_addr(mailAddr):
+  return mailAddr.partition('@')[0]
+
 def make_person_schema(mailFile, schemaFile):
   msg = BytesParser().parse(mailFile)
   (realname, mailAddr) = email.utils.parseaddr(msg['from'])
   realname = make_utf8_str(realname)
   mailAddr = make_utf8_str(mailAddr)
+  if not realname:
+    realname = guess_from_mail_addr(mailAddr)
   schema = """\
   <div itemscope itemtype="http://schema.org/Person">
     <span itemprop="name">%s</span>
@@ -36,7 +41,7 @@ def mails2schema(mailDir, outputDir):
     print(mailFilename)
     if(os.path.isfile(mailFilename)):
       schemaFilename = "%s/person%d.html" % (outputDir,i)
-      i = i + 1
+      i += 1
       with open(mailFilename, 'r+b') as mailFile, open(schemaFilename, 'w', encoding='utf8') as schemaFile:
         make_person_schema(mailFile, schemaFile)
 
