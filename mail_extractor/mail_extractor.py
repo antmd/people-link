@@ -3,23 +3,40 @@ import sys
 import os
 import argparse
 import textwrap
+from email.header import decode_header
+from email.parser import BytesParser
 
-def make_person_schema(msg, schemaFile):
+def make_utf8_str(s):
+  res = ""
+  for (data, encoding) in decode_header(s):
+    if data != None and encoding != None:
+      res += str(data.decode(encoding).encode("utf-8"), "utf-8")
+    else:
+      res += data
+  return res
+
+def make_person_schema(mailFile, schemaFile):
+  msg = BytesParser().parse(mailFile)
+  (realname, mailAddr) = email.utils.parseaddr(msg['from'])
+  realname = make_utf8_str(realname)
+  mailAddr = make_utf8_str(mailAddr)
   schema = """\
   <div itemscope itemtype="http://schema.org/Person">
+    <spane itemprop="name">%s</span>
     <span itemprop="email">%s</span>
-  </div>""" % msg['from']
+  </div>""" % (realname, mailAddr)
   schemaFile.write(textwrap.dedent(schema))
 
 def mails2schema(mailDir, outputDir):
   i = 0
   for mail in os.listdir(mailDir):
     mailFilename = mailDir + "/" + mail
+    print(mailFilename)
     if(os.path.isfile(mailFilename)):
       schemaFilename = "%s/person%d.html" % (outputDir,i)
       i = i + 1
-      with open(mailFilename, 'r') as mailFile, open(schemaFilename, 'w') as schemaFile:
-        make_person_schema(email.message_from_file(mailFile), schemaFile)
+      with open(mailFilename, 'r+b') as mailFile, open(schemaFilename, 'w', encoding='utf8') as schemaFile:
+        make_person_schema(mailFile, schemaFile)
 
 def main():
   parser = argparse.ArgumentParser(description='Mail to schema')
