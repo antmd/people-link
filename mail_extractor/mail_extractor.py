@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import email
 import sys
 import os
@@ -22,7 +24,7 @@ def make_person_schema(mailFile, schemaFile):
   mailAddr = make_utf8_str(mailAddr)
   schema = """\
   <div itemscope itemtype="http://schema.org/Person">
-    <spane itemprop="name">%s</span>
+    <span itemprop="name">%s</span>
     <span itemprop="email">%s</span>
   </div>""" % (realname, mailAddr)
   schemaFile.write(textwrap.dedent(schema))
