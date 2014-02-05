@@ -12,6 +12,10 @@ class Person:
   def __init__(self, name, email):
     self.email = email
     self.name = name
+    self.relations = set()
+
+  def knows(self, p):
+    self.relations.add(p)
 
   def to_schema(self):
     schema = """\
@@ -20,6 +24,10 @@ class Person:
       <span itemprop="email">%s</span>
     </div>""" % (self.name, self.email)
     return textwrap.dedent(schema)
+
+def relateTwoPersons(p1, p2):
+  p1.knows(p2)
+  p2.knows(p1)
 
 def make_utf8_str(s):
   res = ""
@@ -38,6 +46,7 @@ def merge_person(p1, p2):
 
 def make_person_schema(mailFile, outputDir, person_db):
   msg = BytesParser().parse(mailFile)
+  # Make the from person.
   (realname, mailAddr) = email.utils.parseaddr(msg['from'])
   mailAddr = make_utf8_str(mailAddr)
   realname = make_utf8_str(realname)
@@ -45,10 +54,14 @@ def make_person_schema(mailFile, outputDir, person_db):
     realname = guess_name_from_mail_addr(mailAddr)
   person = Person(realname, mailAddr)
 
+  # Add it to the database.
   if mailAddr in person_db:
     person_db[mailAddr] = merge_person(person, person_db[mailAddr])
   else:
     person_db[mailAddr] = person
+
+  # Find ourself
+  # Find cc and to relation (excluding ourself)
 
   person = person_db[mailAddr]
   # Write the new person schema to file.
