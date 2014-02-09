@@ -8,15 +8,18 @@ from email.header import decode_header
 from email.parser import BytesParser
 from lxml import etree
 
+# TODO use a "real email" (first encountered) and "alternative emails" field.
 class Person:
   def __init__(self, name, email):
     self.emails = set()
     self.addEmail(email)
     self.name = name
-    self.relations = set()
+    self.relations = {}
 
   def knows(self, p):
-    self.relations.add(p)
+    for m in p.emails:
+      self.relations[m] = p
+      break
 
   def addEmail(self, email):
     self.emails.add(email.lower())
@@ -28,6 +31,10 @@ class Person:
 
     for mail in self.emails:
       etree.SubElement(root, "span", itemprop="email").text = mail
+
+    for relation in self.relations.values():
+      relation_filename = make_person_filename(relation)
+      etree.SubElement(root, "a", href=relation_filename, itemprop="knows").text = relation.name
     return root
 
   def to_string_schema(self):
@@ -36,12 +43,16 @@ class Person:
   def merge(self, p):
     self.emails = self.emails.union(p.emails)
     # TODO try to find the better name.
-    self.relations = self.relations.union(p.relations)
+    self.relations.update(p.relations)
     return self
 
 def relateTwoPersons(p1, p2):
-  p1.knows(p2)
-  p2.knows(p1)
+  if p1 and p2:
+    p1.knows(p2)
+    p2.knows(p1)
+
+def make_person_filename(p):
+   return next(iter(p.emails)) + ".html"
 
 def make_utf8_str(s):
   res = ""
@@ -49,7 +60,7 @@ def make_utf8_str(s):
     if data != None and encoding != None:
       res += str(data.decode(encoding).encode("utf-8"), "utf-8")
     else:
-      res += data
+      res += str(data)
   return res
 
 def guess_name_from_mail_addr(mailAddr):
@@ -69,18 +80,35 @@ def find_person(person_db, p):
       return person_db[email]
   return None
 
-def update_db(person_db, p):
-  for email in p.emails:
-    if not email in person_db:
-      person_db[email] = p
+def update_db(person_db, person):
+  for email in person.emails:
+    if email in person_db:
+      person = merge_person(person, person_db[email])
+  for email in person.emails:
+    person_db[email] = person
 
-def get_info_from_mail_field(field):
-  (realname, mailAddr) = email.utils.parseaddr(field)
+def mail_info(realname, mailAddr):
   realname = make_utf8_str(realname)
   mailAddr = make_utf8_str(mailAddr.lower())
   if not realname:
     realname = guess_name_from_mail_addr(mailAddr)
   return (realname, mailAddr)
+
+def get_info_from_mail_field(field):
+  (realname, mailAddr) = email.utils.parseaddr(field)
+  return mail_info(realname, mailAddr)
+
+def link_people(person_db, myself, contacts_field):
+  contacts_field = email.utils.getaddresses(contacts_field)
+  if contacts_field:
+    people = set()
+    for (name, email_addr) in contacts_field:
+      (name, email_addr) = mail_info(name, email_addr)
+      if email_addr not in person_db or person_db[email_addr] != myself:
+        update_db(person_db, Person(name, email_addr))
+        people.add(email_addr)
+    for mail in people:
+      relateTwoPersons(person_db[mail], myself)
 
 def make_person_schema(mailFile, outputDir, person_db):
   msg = BytesParser().parse(mailFile)
@@ -89,10 +117,7 @@ def make_person_schema(mailFile, outputDir, person_db):
   person = Person(realname, mailAddr)
 
   # Add it to the database.
-  if mailAddr in person_db:
-    person_db[mailAddr] = merge_person(person, person_db[mailAddr])
-  else:
-    person_db[mailAddr] = person
+  update_db(person_db, person)
 
   # Find ourself
   (my_name, my_email) = get_info_from_mail_field(msg['Delivered-To'])
@@ -106,24 +131,24 @@ def make_person_schema(mailFile, outputDir, person_db):
   addToMyEmailAddr('X-Original-To')
   addToMyEmailAddr('Resent-From')
 
-  myself = find_person(person_db, me)
-  myself = merge_person(myself, me)
-  update_db(person_db, myself)
+  update_db(person_db, me)
 
   # Find cc and to relation (excluding ourself)
+  link_people(person_db, me, msg.get_all('to', []))
+  link_people(person_db, me, msg.get_all('cc', []))
 
 
 def mails2schema(mailDir, outputDir):
   person_db = {}
   for mail in os.listdir(mailDir):
     mailFilename = mailDir + "/" + mail
-    print(mailFilename)
+    # print(mailFilename)
     if(os.path.isfile(mailFilename)):
       with open(mailFilename, 'r+b') as mailFile:
         make_person_schema(mailFile, outputDir, person_db)
   # Create all the files from the db
   for p in person_db.values():
-    schemaFilename = "%s/%s.html" % (outputDir, next(iter(p.emails)))
+    schemaFilename = "%s/%s" % (outputDir, make_person_filename(p))
     with open(schemaFilename, 'w', encoding='utf8') as schemaFile:
       schemaFile.write(p.to_string_schema())
 
