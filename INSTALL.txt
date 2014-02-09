@@ -1,0 +1,5 @@
+On Ubuntu
+---------
+
+sudo apt-get install python3-pip libxml2-dev libxslt1-dev
+sudo pip-3.2 install lxml
